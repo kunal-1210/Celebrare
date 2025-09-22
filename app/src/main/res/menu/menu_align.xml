@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/align_left" android:title="Left"/>
+    <item android:id="@+id/align_center" android:title="Center"/>
+    <item android:id="@+id/align_right" android:title="Right"/>
+    <item android:id="@+id/align_justify" android:title="Justify"/>
+</menu>

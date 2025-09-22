@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Display names for Spinner -->
+    <string-array name="font_names">
+        <item>@string/font_bebas_neue</item>
+        <item>@string/font_merriweather</item>
+        <item>@string/font_playfair_display</item>
+        <item>@string/font_roboto</item>
+        <item>@string/font_playwritegjb</item>
+        <item>@string/font_pacifico</item>
+    </string-array>
+
+
+    <!-- Font resource IDs (must match order above) -->
+    <array name="font_res_ids">
+        <item>@font/bebasneue_regular</item>
+        <item>@font/merriweather_regular</item>
+        <item>@font/playfairdisplay_regular</item>
+        <item>@font/roboto_regular</item>
+        <item>@font/playwritegjb_regular</item>
+        <item>@font/pacifico_regular</item>
+    </array>
+
+</resources>
