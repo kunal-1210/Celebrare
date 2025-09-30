@@ -23,7 +23,7 @@ public class CustomCanvasView extends View {
     private boolean isBold = false;
     private boolean isItalic = false;
     private boolean isUnderline = false;
-    private float textSize = 50f;
+    private float textSize = 20f;
     private String fontName = "sans-serif";
     private int textColor = 0xFF000000; // default black
     private Paint.Align textAlign = Paint.Align.CENTER;
@@ -31,6 +31,8 @@ public class CustomCanvasView extends View {
     private float offsetX, offsetY;
     private List<List<TextItem>> undoStack = new ArrayList<>();
     private List<List<TextItem>> redoStack = new ArrayList<>();
+    private int lastWidth = -1;
+    private int lastHeight = -1;
 
 
     public CustomCanvasView(Context context, AttributeSet attrs) {
@@ -45,13 +47,53 @@ public class CustomCanvasView extends View {
         textPaint.setTextAlign(textAlign);
         saveStateForUndo();
     }
+    private List<String> wrapText(String text, Paint paint, float maxWidth) {
+        List<String> lines = new ArrayList<>();
+
+        // Split by existing line breaks first
+        String[] paragraphs = text.split("\n");
+
+        for (String paragraph : paragraphs) {
+            if (paragraph.trim().isEmpty()) {
+                lines.add("");
+                continue;
+            }
+
+            String[] words = paragraph.split(" ");
+            StringBuilder currentLine = new StringBuilder();
+
+            for (String word : words) {
+                String testLine = currentLine.length() == 0 ?
+                    word : currentLine + " " + word;
+
+                float testWidth = paint.measureText(testLine);
+
+                if (testWidth > maxWidth && currentLine.length() > 0) {
+                    // Current line is full, save it and start new line
+                    lines.add(currentLine.toString());
+                    currentLine = new StringBuilder(word);
+                } else {
+                    currentLine = new StringBuilder(testLine);
+                }
+            }
+
+            // Add the last line
+            if (currentLine.length() > 0) {
+                lines.add(currentLine.toString());
+            }
+        }
+
+        return lines;
+    }
 
     public void addText(String text) {
         saveStateForUndo();
-        TextItem item = new TextItem(text, getWidth()/2f, getHeight()/2f, fontName, textSize, isBold, isItalic, isUnderline, textColor, textAlign,currentTypeface);
+        TextItem item = new TextItem(text, getWidth()/2f, getHeight()/2f, fontName,
+            textSize, isBold, isItalic, isUnderline, textColor,
+            textAlign, currentTypeface);
         textItems.add(item);
         saveStateForUndo();
-        invalidate(); // redraw canvas
+        invalidate();
     }
 
     public boolean isBold() { return isBold; }
@@ -62,7 +104,6 @@ public class CustomCanvasView extends View {
     public void setBold(boolean bold) { isBold = bold; }
     public void setItalic(boolean italic) { isItalic = italic; }
     public void setUnderline(boolean underline) { isUnderline = underline; }
-    public void setTextFont(String font) { fontName = font; }
     public void setTextColor(int color) { textColor = color; invalidate(); }
 
 
@@ -78,6 +119,7 @@ public class CustomCanvasView extends View {
         float x = event.getX();
         float y = event.getY();
         Log.d("TouchDebug", "Event action: " + event.getAction() + " | X: " + x + " | Y: " + y);
+
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 selectedText = findTextAtPosition(x, y);
@@ -90,34 +132,79 @@ public class CustomCanvasView extends View {
                 }
 
                 if (selectedText != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
                     offsetX = x - selectedText.x;
                     offsetY = y - selectedText.y;
+                    startX = selectedText.x;
+                    startY = selectedText.y;
+                    isMoving = false;
                     Log.d("TouchDebug", "Touch offset set → offsetX: " + offsetX + " offsetY: " + offsetY);
-
                 } else {
-                    // Tapped empty space → deselect
                     Log.d("TouchDebug", "Tapped empty space. Clearing selection.");
                     selectedText = null;
                     invalidate();
                 }
                 break;
 
-
             case MotionEvent.ACTION_MOVE:
                 if (selectedText != null) {
-                    float newX = clampX(x - offsetX, textPaint.measureText(selectedText.text));
-                    float newY = clampY(y - offsetY, selectedText.size);
+                    float newX = x - offsetX;
+                    float newY = y - offsetY;
+
+                    textPaint.setTextSize(spToPx(selectedText.size));
+                    Typeface baseTypeface = (selectedText.typeface != null) ?
+                        selectedText.typeface : Typeface.create(selectedText.fontName, Typeface.NORMAL);
+                    int styleFlags = Typeface.NORMAL;
+                    if (selectedText.bold && selectedText.italic) styleFlags = Typeface.BOLD_ITALIC;
+                    else if (selectedText.bold) styleFlags = Typeface.BOLD;
+                    else if (selectedText.italic) styleFlags = Typeface.ITALIC;
+                    textPaint.setTypeface(Typeface.create(baseTypeface, styleFlags));
+
+                    float maxWidth = getWidth() * 0.8f;
+
+                    // Use cache during dragging too!
+                    List<String> lines;
+                    if (selectedText.isCacheValid(maxWidth)) {
+                        lines = selectedText.cachedLines;
+                    } else {
+                        lines = wrapText(selectedText.text, textPaint, maxWidth);
+                        selectedText.updateCache(lines, maxWidth);
+                    }
+
+                    float maxLineWidth = 0;
+                    for (String line : lines) {
+                        float lineWidth = textPaint.measureText(line);
+                        if (lineWidth > maxLineWidth) {
+                            maxLineWidth = lineWidth;
+                        }
+                    }
+
+                    Paint.FontMetrics metrics = textPaint.getFontMetrics();
+                    float lineHeight = metrics.bottom - metrics.top + metrics.leading;
+                    float totalHeight = lines.size() * lineHeight;
+
+                    // Clamp positions
+                    float halfWidth = maxLineWidth / 2;
+                    float minX = halfWidth;
+                    float maxX = getWidth() - halfWidth;
+                    newX = Math.max(minX, Math.min(newX, maxX));
+
+                    float minY = Math.abs(metrics.top);
+                    float maxY = getHeight() - totalHeight + lineHeight - Math.abs(metrics.bottom);
+                    newY = Math.max(minY, Math.min(newY, maxY));
+
+                    // NOTE: Position changes don't invalidate cache!
+                    selectedText.x = newX;
+                    selectedText.y = newY;
 
                     if (!isMoving && (Math.abs(newX - startX) > 5 || Math.abs(newY - startY) > 5)) {
                         isMoving = true;
                     }
-                    selectedText.x = newX;
-                    selectedText.y = newY;
                     invalidate();
                 }
                 break;
-
             case MotionEvent.ACTION_UP:
+                getParent().requestDisallowInterceptTouchEvent(false);
                 if (isMoving) {
                     saveStateForUndo();
                 }
@@ -127,12 +214,17 @@ public class CustomCanvasView extends View {
 
         return true;
     }
-    public void applyAttributeChange(Runnable change) {
 
-        saveStateForUndo();
-        change.run();
-        invalidate();
+// You can now DELETE or keep clampX and clampY methods (they're not used anymore)
+// The clamping logic is now directly in ACTION_MOVE
+public void applyAttributeChange(Runnable change) {
+    saveStateForUndo();
+    if (selectedText != null) {
+        selectedText.invalidateCache(); // Clear cache before change
     }
+    change.run();
+    invalidate();
+}
 
 
     public interface OnTextSelectedListener {
@@ -155,65 +247,97 @@ public class CustomCanvasView extends View {
         super.onDraw(canvas);
 
         for (TextItem item : textItems) {
-            textPaint.setTextSize(item.size);
+            textPaint.setTextSize(spToPx(item.size));
             textPaint.setColor(item.color);
             textPaint.setTextAlign(item.align);
 
-            int style;
-            if (item.bold && item.italic) {
-                style = Typeface.BOLD_ITALIC;
-            } else if (item.bold) {
-                style = Typeface.BOLD;
-            } else if (item.italic) {
-                style = Typeface.ITALIC;
-            } else {
-                style = Typeface.NORMAL;
-            }
-
-            Log.d("FontDebug", "Drawing text: '" + item.text + "' typeface=" + item.typeface);
-            Typeface baseTypeface = (item.typeface != null) ? item.typeface : Typeface.create(item.fontName, Typeface.NORMAL);
+            Typeface baseTypeface = (item.typeface != null) ?
+                item.typeface : Typeface.create(item.fontName, Typeface.NORMAL);
             int styleFlags = Typeface.NORMAL;
             if (item.bold && item.italic) styleFlags = Typeface.BOLD_ITALIC;
             else if (item.bold) styleFlags = Typeface.BOLD;
             else if (item.italic) styleFlags = Typeface.ITALIC;
 
             textPaint.setTypeface(Typeface.create(baseTypeface, styleFlags));
-
             textPaint.setUnderlineText(item.underline);
 
-            float textWidth = textPaint.measureText(item.text);
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
-            float textHeight = metrics.bottom - metrics.top;
+            float lineHeight = metrics.bottom - metrics.top + metrics.leading;
+            float maxWidth = getWidth() * 0.8f;
 
+            // Use comprehensive cache validation
+            List<String> lines;
+            if (item.isCacheValid(maxWidth)) {
+                lines = item.cachedLines;
+                Log.d("CacheDebug", "✓ Cache HIT for: " + item.text);
+            } else {
+                lines = wrapText(item.text, textPaint, maxWidth);
+                item.updateCache(lines, maxWidth);
+                Log.d("CacheDebug", "✗ Cache MISS for: " + item.text + " - recalculating");
+            }
 
-            canvas.drawText(item.text, item.x, item.y, textPaint);
+            float totalHeight = lines.size() * lineHeight;
+            float currentY = item.y;
+            float maxLineWidth = 0;
 
+            for (String line : lines) {
+                float lineWidth = textPaint.measureText(line);
+                maxLineWidth = Math.max(maxLineWidth, lineWidth);
+                canvas.drawText(line, item.x, currentY, textPaint);
+                currentY += lineHeight;
+            }
 
             if (item == selectedText) {
                 Paint borderPaint = new Paint();
                 borderPaint.setStyle(Paint.Style.STROKE);
-                borderPaint.setColor(0xFF00FF00); // green border
+                borderPaint.setColor(0xFF00FF00);
                 borderPaint.setStrokeWidth(3);
 
-                float left = item.x - textWidth / 2;
+                float left = item.x - maxLineWidth / 2;
                 float top = item.y + metrics.top;
-                float right = item.x + textWidth / 2;
-                float bottom = item.y + metrics.bottom;
+                float right = item.x + maxLineWidth / 2;
+                float bottom = item.y + totalHeight + metrics.bottom - lineHeight;
 
                 canvas.drawRect(left, top, right, bottom, borderPaint);
             }
         }
     }
-
     private TextItem findTextAtPosition(float x, float y) {
-        for (int i = textItems.size() - 1; i >= 0; i--) { // check topmost first
+        for (int i = textItems.size() - 1; i >= 0; i--) {
             TextItem item = textItems.get(i);
-            float textWidth = textPaint.measureText(item.text);
-            float textHeight = item.size;
-            float left = item.x - textWidth / 2;
-            float right = item.x + textWidth / 2;
-            float top = item.y - textHeight;
-            float bottom = item.y;
+
+            textPaint.setTextSize(spToPx(item.size));
+            Typeface baseTypeface = (item.typeface != null) ?
+                item.typeface : Typeface.create(item.fontName, Typeface.NORMAL);
+            int styleFlags = Typeface.NORMAL;
+            if (item.bold && item.italic) styleFlags = Typeface.BOLD_ITALIC;
+            else if (item.bold) styleFlags = Typeface.BOLD;
+            else if (item.italic) styleFlags = Typeface.ITALIC;
+            textPaint.setTypeface(Typeface.create(baseTypeface, styleFlags));
+
+            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            float lineHeight = metrics.bottom - metrics.top + metrics.leading;
+            float maxWidth = getWidth() * 0.8f;
+
+            // Use cache in hit-testing too!
+            List<String> lines;
+            if (item.isCacheValid(maxWidth)) {
+                lines = item.cachedLines;
+            } else {
+                lines = wrapText(item.text, textPaint, maxWidth);
+                item.updateCache(lines, maxWidth);
+            }
+
+            float maxLineWidth = 0;
+            for (String line : lines) {
+                maxLineWidth = Math.max(maxLineWidth, textPaint.measureText(line));
+            }
+
+            float totalHeight = lines.size() * lineHeight;
+            float left = item.x - maxLineWidth / 2;
+            float right = item.x + maxLineWidth / 2;
+            float top = item.y + metrics.top;
+            float bottom = item.y + totalHeight + metrics.bottom - lineHeight;
 
             if (x >= left && x <= right && y >= top && y <= bottom) {
                 return item;
@@ -222,17 +346,6 @@ public class CustomCanvasView extends View {
         return null;
     }
 
-    private float clampX(float x, float textWidth) {
-        float minX = textWidth / 2;
-        float maxX = getWidth() - textWidth / 2;
-        return Math.max(minX, Math.min(x, maxX));
-    }
-
-    private float clampY(float y, float textHeight) {
-        float minY = textHeight;
-        float maxY = getHeight();
-        return Math.max(minY, Math.min(y, maxY));
-    }
 
     public void setCustomFont(Typeface typeface) {
         if (textPaint != null) {
@@ -250,6 +363,16 @@ public class CustomCanvasView extends View {
         public Paint.Align align;
         public Typeface typeface;
 
+        public List<String> cachedLines = null;
+        public float cachedMaxWidth = -1;
+        public float cachedSize = -1;
+        public String cachedText = null;
+        public boolean cachedBold = false;
+        public boolean cachedItalic = false;
+        public Typeface cachedTypeface = null;
+        public Paint.Align cachedAlign = null;
+
+
         TextItem(String text, float x, float y, String fontName, float size, boolean bold, boolean italic, boolean underline, int color, Paint.Align align,Typeface typeface) {
             this.text = text;
             this.x = x;
@@ -263,12 +386,44 @@ public class CustomCanvasView extends View {
             this.align = align;
             this.typeface = typeface;
         }
+        public void invalidateCache() {
+            cachedLines = null;
+            cachedMaxWidth = -1;
+            cachedSize = -1;
+            cachedText = null;
+            cachedBold = false;
+            cachedItalic = false;
+            cachedTypeface = null;
+            cachedAlign = null;
+        }
+        public boolean isCacheValid(float maxWidth) {
+            return cachedLines != null
+                && cachedMaxWidth == maxWidth
+                && cachedSize == size
+                && text.equals(cachedText)
+                && cachedBold == bold
+                && cachedItalic == italic
+                && cachedTypeface == typeface
+                && cachedAlign == align;
+        }
+
+        // Update cache with current properties
+        public void updateCache(List<String> lines, float maxWidth) {
+            cachedLines = lines;
+            cachedMaxWidth = maxWidth;
+            cachedSize = size;
+            cachedText = text;
+            cachedBold = bold;
+            cachedItalic = italic;
+            cachedTypeface = typeface;
+            cachedAlign = align;
+        }
     }
 
     private List<TextItem> deepCopyTextItems(List<TextItem> original) {
         List<TextItem> copy = new ArrayList<>();
         for (TextItem item : original) {
-            copy.add(new TextItem(
+            TextItem newItem = new TextItem(
                 item.text,
                 item.x,
                 item.y,
@@ -280,11 +435,13 @@ public class CustomCanvasView extends View {
                 item.color,
                 item.align,
                 item.typeface
-            ));
+            );
+            // Don't copy cache - force fresh calculation
+            newItem.cachedLines = null;
+            copy.add(newItem);
         }
         return copy;
-    }
-    public void saveStateForUndo() {
+    }    public void saveStateForUndo() {
 
         if (undoStack.isEmpty()) {
             undoStack.add(deepCopyTextItems(textItems));
@@ -356,5 +513,11 @@ public class CustomCanvasView extends View {
             invalidate();
         }
     }
+    private float spToPx(float sp) {
+        return sp * getResources().getDisplayMetrics().scaledDensity;
+    }
+
+
+
 
 }

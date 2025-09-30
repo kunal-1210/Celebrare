@@ -9,17 +9,27 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.AdapterView;
 import android.widget.SeekBar;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.viewpager2.widget.ViewPager2;
+
 import com.example.celebrare.databinding.ActivityMainBinding;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
-    private CustomCanvasView customCanvas;
+    private CanvasPagerAdapter canvasPagerAdapter;
+    private ViewPager2 viewPager;
+
     private int[] fontResIds;
+
+    // Predefined font sizes
     private final String[] fontSizes = {
         "20","24","28","32","36","48","60","72","96","120","144"
     };
@@ -27,20 +37,74 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        customCanvas = binding.customCanvas;
+        viewPager = binding.viewPagerCanvas;
 
+        // Create multiple canvases
+        List<CanvasFragment> canvasFragments = new ArrayList<>();
+        for (int i = 0; i < 3; i++) { // You can dynamically change count
+            canvasFragments.add(CanvasFragment.newInstance(i));
+        }
+
+        canvasPagerAdapter = new CanvasPagerAdapter(this, canvasFragments);
+        viewPager.setAdapter(canvasPagerAdapter);
+
+        setupNavigationButtons();
         setupFontSpinner();
         setupFontSizeSpinner();
         setupButtons();
+
+        // Initially hide update/delete buttons
         binding.btnUpdate.setVisibility(View.GONE);
         binding.btnDel.setVisibility(View.GONE);
 
-        customCanvas.setOnTextSelectedListener(item -> {
+        // Listen to currently selected fragment's canvas
+        viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                super.onPageSelected(position);
+                CustomCanvasView currentCanvas = getCurrentCanvas();
+                if (currentCanvas != null) {
+                    setupCanvasSelectionListener(currentCanvas);
+                }
+            }
+        });
 
+        // Setup listener for the very first canvas
+        setupCanvasSelectionListener(getCurrentCanvas());
+    }
+
+    /** ==============================
+     *  NAVIGATION BETWEEN CANVASES
+     *  ============================== */
+    private void setupNavigationButtons() {
+        binding.btnPrevSlide.setOnClickListener(v -> {
+            int prev = viewPager.getCurrentItem() - 1;
+            if (prev >= 0) viewPager.setCurrentItem(prev, true);
+        });
+
+        binding.btnNextSlide.setOnClickListener(v -> {
+            int next = viewPager.getCurrentItem() + 1;
+            if (next < canvasPagerAdapter.getItemCount()) {
+                viewPager.setCurrentItem(next, true);
+            }
+        });
+    }
+
+    private CustomCanvasView getCurrentCanvas() {
+        CanvasFragment currentFragment = canvasPagerAdapter.getFragmentAt(viewPager.getCurrentItem());
+        return currentFragment != null ? currentFragment.getCustomCanvas() : null;
+    }
+
+    /** ==============================
+     *  TEXT SELECTION HANDLING
+     *  ============================== */
+    private void setupCanvasSelectionListener(CustomCanvasView canvas) {
+        if (canvas == null) return;
+
+        canvas.setOnTextSelectedListener(item -> {
             if (item != null) {
                 binding.btnUpdate.setVisibility(View.VISIBLE);
                 binding.btnDel.setVisibility(View.VISIBLE);
@@ -58,14 +122,13 @@ public class MainActivity extends AppCompatActivity {
                     ContextCompat.getColor(this, android.R.color.white));
 
                 binding.colorPreview.setBackgroundColor(item.color);
-
-                binding.spinnerFontSize.setSelection(getFontSizeIndex((int)item.size));
+                binding.spinnerFontSize.setSelection(getFontSizeIndex((int) item.size));
 
                 int fontIndex = getFontIndex(item.typeface);
                 if (fontIndex >= 0) binding.spinnerFonts.setSelection(fontIndex);
 
             } else {
-
+                // Reset when no text selected
                 binding.btnUpdate.setVisibility(View.GONE);
                 binding.btnDel.setVisibility(View.GONE);
                 binding.btnBold.setBackgroundColor(ContextCompat.getColor(this, android.R.color.white));
@@ -76,7 +139,70 @@ public class MainActivity extends AppCompatActivity {
                 binding.spinnerFonts.setSelection(0);
             }
         });
+    }
 
+    /** ==============================
+     *  FONT & FONT SIZE
+     *  ============================== */
+    private void setupFontSpinner() {
+        String[] fontNames = getResources().getStringArray(R.array.font_names);
+
+        TypedArray fontArray = getResources().obtainTypedArray(R.array.font_res_ids);
+        fontResIds = new int[fontArray.length()];
+        for (int i = 0; i < fontArray.length(); i++) {
+            fontResIds[i] = fontArray.getResourceId(i, -1);
+        }
+        fontArray.recycle();
+
+        FontSpinnerAdapter adapter = new FontSpinnerAdapter(this, fontNames, fontResIds);
+        binding.spinnerFonts.setAdapter(adapter);
+
+        binding.spinnerFonts.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                CustomCanvasView currentCanvas = getCurrentCanvas();
+                if (currentCanvas == null) return;
+
+                Typeface typeface = ResourcesCompat.getFont(MainActivity.this, fontResIds[position]);
+                CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+
+                if (selected != null && typeface != null) {
+                    currentCanvas.applyAttributeChange(() -> selected.typeface = typeface);
+                } else if (typeface != null) {
+                    currentCanvas.setCustomFont(typeface);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    private void setupFontSizeSpinner() {
+        ArrayAdapter<String> sizeAdapter =
+            new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, fontSizes);
+        sizeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        binding.spinnerFontSize.setAdapter(sizeAdapter);
+
+        binding.spinnerFontSize.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                CustomCanvasView currentCanvas = getCurrentCanvas();
+                if (currentCanvas == null) return;
+
+                int size = Integer.parseInt(fontSizes[position]);
+                CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+
+                if (selected != null) {
+                    currentCanvas.applyAttributeChange(() -> selected.size = size);
+                } else {
+                    currentCanvas.setTextSize(size);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
     }
 
     private int getFontSizeIndex(int size) {
@@ -94,148 +220,81 @@ public class MainActivity extends AppCompatActivity {
         return -1;
     }
 
-    private void setupFontSpinner() {
-        String[] fontNames = getResources().getStringArray(R.array.font_names);
-
-        TypedArray fontArray = getResources().obtainTypedArray(R.array.font_res_ids);
-        fontResIds = new int[fontArray.length()];
-        for (int i = 0; i < fontArray.length(); i++) fontResIds[i] = fontArray.getResourceId(i, -1);
-        fontArray.recycle();
-
-        FontSpinnerAdapter adapter = new FontSpinnerAdapter(this, fontNames, fontResIds);
-        binding.spinnerFonts.setAdapter(adapter);
-
-        binding.spinnerFonts.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                Typeface typeface = ResourcesCompat.getFont(MainActivity.this, fontResIds[position]);
-                CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-                if (selected != null && typeface != null) {
-                    customCanvas.applyAttributeChange(() -> selected.typeface = typeface);
-                } else if (typeface != null) {
-                    customCanvas.setCustomFont(typeface);
-                }
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-    }
-
-
-    private void setupFontSizeSpinner() {
-        ArrayAdapter<String> sizeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, fontSizes);
-        sizeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        binding.spinnerFontSize.setAdapter(sizeAdapter);
-
-        binding.spinnerFontSize.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                int size = Integer.parseInt(fontSizes[position]);
-                CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-                if (selected != null) {
-                    customCanvas.applyAttributeChange(() -> selected.size = size);
-                } else {
-                    customCanvas.setTextSize(size);
-                }
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-    }
-
+    /** ==============================
+     *  BUTTON HANDLERS
+     *  ============================== */
     private void setupButtons() {
-
         binding.btnAddText.setOnClickListener(v -> {
-            showTextInputDialog();
-            customCanvas.saveStateForUndo();
+            CustomCanvasView currentCanvas = getCurrentCanvas();
+            if (currentCanvas != null) {
+                showTextInputDialog(currentCanvas);
+                currentCanvas.saveStateForUndo();
+            }
         });
-
-        binding.btnUpdate.setEnabled(true);
 
         binding.btnUpdate.setOnClickListener(v -> {
-            CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-            if (selected != null) {
-                showUpdateTextDialog(selected);
+            CustomCanvasView currentCanvas = getCurrentCanvas();
+            if (currentCanvas != null) {
+                CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+                if (selected != null) showUpdateTextDialog(currentCanvas, selected);
             }
         });
 
         binding.btnDel.setOnClickListener(v -> {
-            CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-            if (selected != null) {
-
-                customCanvas.saveStateForUndo();
-                customCanvas.removeText(selected);
-                customCanvas.invalidate();
+            CustomCanvasView currentCanvas = getCurrentCanvas();
+            if (currentCanvas != null) {
+                CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+                if (selected != null) {
+                    currentCanvas.saveStateForUndo();
+                    currentCanvas.removeText(selected);
+                    currentCanvas.invalidate();
+                }
             }
         });
 
-        binding.btnBold.setOnClickListener(v -> {
-            CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-
-            if (selected != null) {
-                customCanvas.applyAttributeChange(() -> {
-                    selected.bold = !selected.bold;
-                });
-
-                v.setBackgroundColor(selected.bold
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-
-            } else {
-                boolean newState = !customCanvas.isBold();
-                customCanvas.setBold(newState);
-                v.setBackgroundColor(newState
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-            }
-        });
-
-
-        binding.btnItalic.setOnClickListener(v -> {
-            CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-            if (selected != null) {
-                customCanvas.applyAttributeChange(() -> selected.italic = !selected.italic);
-
-                v.setBackgroundColor(selected.italic
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-            } else {
-                boolean newState = !customCanvas.isItalic();
-                customCanvas.setItalic(newState);
-                v.setBackgroundColor(newState
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-            }
-        });
-
-        binding.btnUnderline.setOnClickListener(v -> {
-            CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-            if (selected != null) {
-                customCanvas.applyAttributeChange(() -> selected.underline = !selected.underline);
-
-                v.setBackgroundColor(selected.underline
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-            } else {
-                boolean newState = !customCanvas.isUnderline();
-                customCanvas.setUnderline(newState);
-                v.setBackgroundColor(newState
-                    ? ContextCompat.getColor(this, R.color.off_white)
-                    : ContextCompat.getColor(this, android.R.color.white));
-            }
-        });
+        binding.btnBold.setOnClickListener(v -> toggleTextStyle("bold"));
+        binding.btnItalic.setOnClickListener(v -> toggleTextStyle("italic"));
+        binding.btnUnderline.setOnClickListener(v -> toggleTextStyle("underline"));
 
         binding.btnTextColor.setOnClickListener(v -> showColorPickerDialog());
 
-        binding.btnUndo.setOnClickListener(v -> customCanvas.undo());
+        binding.btnUndo.setOnClickListener(v -> {
+            CustomCanvasView currentCanvas = getCurrentCanvas();
+            if (currentCanvas != null) currentCanvas.undo();
+        });
 
-        binding.btnRedo.setOnClickListener(v -> customCanvas.redo());
+        binding.btnRedo.setOnClickListener(v -> {
+            CustomCanvasView currentCanvas = getCurrentCanvas();
+            if (currentCanvas != null) currentCanvas.redo();
+        });
     }
 
+    private void toggleTextStyle(String style) {
+        CustomCanvasView currentCanvas = getCurrentCanvas();
+        if (currentCanvas == null) return;
+
+        CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+
+        if (selected != null) {
+            currentCanvas.applyAttributeChange(() -> {
+                switch (style) {
+                    case "bold": selected.bold = !selected.bold; break;
+                    case "italic": selected.italic = !selected.italic; break;
+                    case "underline": selected.underline = !selected.underline; break;
+                }
+            });
+        } else {
+            switch (style) {
+                case "bold": currentCanvas.setBold(!currentCanvas.isBold()); break;
+                case "italic": currentCanvas.setItalic(!currentCanvas.isItalic()); break;
+                case "underline": currentCanvas.setUnderline(!currentCanvas.isUnderline()); break;
+            }
+        }
+    }
+
+    /** ==============================
+     *  COLOR PICKER
+     *  ============================== */
     private void showColorPickerDialog() {
         View view = getLayoutInflater().inflate(R.layout.dialog_color_picker, null);
         View colorPreview = view.findViewById(R.id.colorPreview);
@@ -243,14 +302,9 @@ public class MainActivity extends AppCompatActivity {
         SeekBar seekGreen = view.findViewById(R.id.seekGreen);
         SeekBar seekBlue = view.findViewById(R.id.seekBlue);
 
-        int[] rgb = {0, 0, 0};
-
         SeekBar.OnSeekBarChangeListener listener = new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                rgb[0] = seekRed.getProgress();
-                rgb[1] = seekGreen.getProgress();
-                rgb[2] = seekBlue.getProgress();
-                int color = Color.rgb(rgb[0], rgb[1], rgb[2]);
+                int color = Color.rgb(seekRed.getProgress(), seekGreen.getProgress(), seekBlue.getProgress());
                 colorPreview.setBackgroundColor(color);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -266,20 +320,23 @@ public class MainActivity extends AppCompatActivity {
             .setView(view)
             .setPositiveButton("OK", (dialog, which) -> {
                 int color = Color.rgb(seekRed.getProgress(), seekGreen.getProgress(), seekBlue.getProgress());
-                CustomCanvasView.TextItem selected = customCanvas.getSelectedText();
-                if (selected != null) {
-                    selected.color = color;
-                    customCanvas.invalidate();
-                } else {
-                    customCanvas.setTextColor(color);
+                CustomCanvasView currentCanvas = getCurrentCanvas();
+                if (currentCanvas != null) {
+                    CustomCanvasView.TextItem selected = currentCanvas.getSelectedText();
+                    if (selected != null) {
+                        selected.color = color;
+                        currentCanvas.invalidate();
+                    } else {
+                        currentCanvas.setTextColor(color);
+                    }
+                    binding.colorPreview.setBackgroundColor(color);
                 }
-                binding.colorPreview.setBackgroundColor(color);
             })
             .setNegativeButton("Cancel", null)
             .show();
     }
 
-    private void showTextInputDialog() {
+    private void showTextInputDialog(CustomCanvasView canvas) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Enter text");
         final EditText input = new EditText(this);
@@ -287,12 +344,13 @@ public class MainActivity extends AppCompatActivity {
         builder.setView(input);
         builder.setPositiveButton("OK", (dialog, which) -> {
             String text = input.getText().toString().trim();
-            if (!text.isEmpty()) customCanvas.addText(text);
+            if (!text.isEmpty()) canvas.addText(text);
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
         builder.show();
     }
-    private void showUpdateTextDialog(CustomCanvasView.TextItem selected) {
+
+    private void showUpdateTextDialog(CustomCanvasView canvas, CustomCanvasView.TextItem selected) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Update text");
 
@@ -303,12 +361,11 @@ public class MainActivity extends AppCompatActivity {
         builder.setPositiveButton("OK", (dialog, which) -> {
             String newText = input.getText().toString().trim();
             if (!newText.isEmpty() && !newText.equals(selected.text)) {
-                customCanvas.applyAttributeChange(() -> selected.text = newText);
+                canvas.applyAttributeChange(() -> selected.text = newText);
             }
         });
 
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
         builder.show();
     }
-
 }
