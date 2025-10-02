@@ -11,7 +11,7 @@
         android:theme="@style/Theme.Celebrare">
 
         <!-- Main launcher activity -->
-        <activity android:name=".MainActivity"
+        <activity android:name=".LoginActivity"
             android:exported="true">
 
             <intent-filter>
@@ -19,6 +19,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".MainActivity" />
+        <activity android:name=".SignupActivity" />
+        <activity android:name=".LoadSheetActivity" />
 
     </application>
 

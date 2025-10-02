@@ -16,6 +16,7 @@ public class CustomCanvasView extends View {
 
     private List<TextItem> textItems = new ArrayList<>();
     private TextPaint textPaint;
+    private long sheetId;
 
     private Typeface currentTypeface = Typeface.DEFAULT;
 
@@ -34,9 +35,38 @@ public class CustomCanvasView extends View {
     private int lastWidth = -1;
     private int lastHeight = -1;
 
+    public long getSheetId() {
+        return sheetId;
+    }
+
+    public List<TextItem> getTextItems() {
+        return textItems;
+    }
+
+    public void setTextItems(List<TextItem> items) {
+        this.textItems = items;
+        invalidate();
+    }
+    public void setSheetId(long id) {
+        this.sheetId = id;
+    }
+    public void initForSheet(int id) {
+        this.sheetId = id;
+        textItems.clear(); // new sheet starts blank
+        invalidate();
+    }
+    public CustomCanvasView(Context context) {
+        super(context);
+        init();
+    }
 
     public CustomCanvasView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        init();
+    }
+
+    public CustomCanvasView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         init();
     }
 
@@ -88,10 +118,12 @@ public class CustomCanvasView extends View {
 
     public void addText(String text) {
         saveStateForUndo();
+        long textId = System.currentTimeMillis();
         TextItem item = new TextItem(text, getWidth()/2f, getHeight()/2f, fontName,
             textSize, isBold, isItalic, isUnderline, textColor,
-            textAlign, currentTypeface);
+            textAlign, currentTypeface,textId);
         textItems.add(item);
+        Log.d("CustomCanvasView", "addText: \"" + text + "\" added with id=" + textId);
         saveStateForUndo();
         invalidate();
     }
@@ -214,9 +246,6 @@ public class CustomCanvasView extends View {
 
         return true;
     }
-
-// You can now DELETE or keep clampX and clampY methods (they're not used anymore)
-// The clamping logic is now directly in ACTION_MOVE
 public void applyAttributeChange(Runnable change) {
     saveStateForUndo();
     if (selectedText != null) {
@@ -225,8 +254,6 @@ public void applyAttributeChange(Runnable change) {
     change.run();
     invalidate();
 }
-
-
     public interface OnTextSelectedListener {
         void onTextSelected(TextItem item);
     }
@@ -362,6 +389,7 @@ public void applyAttributeChange(Runnable change) {
         public int color;
         public Paint.Align align;
         public Typeface typeface;
+        public long id;
 
         public List<String> cachedLines = null;
         public float cachedMaxWidth = -1;
@@ -373,7 +401,7 @@ public void applyAttributeChange(Runnable change) {
         public Paint.Align cachedAlign = null;
 
 
-        TextItem(String text, float x, float y, String fontName, float size, boolean bold, boolean italic, boolean underline, int color, Paint.Align align,Typeface typeface) {
+        TextItem(String text, float x, float y, String fontName, float size, boolean bold, boolean italic, boolean underline, int color, Paint.Align align,Typeface typeface,long id) {
             this.text = text;
             this.x = x;
             this.y = y;
@@ -385,6 +413,7 @@ public void applyAttributeChange(Runnable change) {
             this.color = color;
             this.align = align;
             this.typeface = typeface;
+            this.id = id;
         }
         public void invalidateCache() {
             cachedLines = null;
@@ -434,7 +463,8 @@ public void applyAttributeChange(Runnable change) {
                 item.underline,
                 item.color,
                 item.align,
-                item.typeface
+                item.typeface,
+                item.id
             );
             // Don't copy cache - force fresh calculation
             newItem.cachedLines = null;
@@ -516,8 +546,5 @@ public void applyAttributeChange(Runnable change) {
     private float spToPx(float sp) {
         return sp * getResources().getDisplayMetrics().scaledDensity;
     }
-
-
-
 
 }
