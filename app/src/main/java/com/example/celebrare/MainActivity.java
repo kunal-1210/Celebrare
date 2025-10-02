@@ -1,7 +1,5 @@
 package com.example.celebrare;
 
-import com.example.celebrare.TextItemDTO;
-
 import android.content.Intent;
 import android.content.res.TypedArray;
 import android.graphics.Color;
@@ -11,7 +9,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -26,7 +23,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
-import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -131,7 +127,7 @@ public class MainActivity extends AppCompatActivity {
                     String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
                     Log.d("UploadDebug", "Firebase UID: " + uid);
 
-                    FirebaseDatabase.getInstance("https://cauth-d6038-default-rtdb.asia-southeast1.firebasedatabase.app")
+                    FirebaseDatabase.getInstance("https://<YOUR_PROJECT_URL>.firebaseio.com/\"")
                         .getReference("users")
                         .child(uid)
                         .child("sheets")
@@ -191,8 +187,8 @@ public class MainActivity extends AppCompatActivity {
                         t.italic,
                         t.underline,
                         t.color,
-                        Paint.Align.CENTER, // or t.align if you store it
-                        null,               // Typeface cannot be serialized; use null
+                        Paint.Align.CENTER,
+                        null,
                         t.id
                     ));
                 }
@@ -208,51 +204,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
-
-
-    // MainActivity.java
-    public void addNewSheet(CanvasData sheetFromFirebase) {
-        // 1. Create a deep copy of the sheet to avoid modifying Firebase data
-        CanvasData newSheet = new CanvasData(
-            System.currentTimeMillis(), // new unique ID for this sheet
-            sheetFromFirebase.getName() + " (copy)" // optional: rename to indicate it's loaded
-        );
-
-        // Copy text items
-        List<CustomCanvasView.TextItem> copiedItems = new ArrayList<>();
-        for (CustomCanvasView.TextItem item : sheetFromFirebase.getTextItems()) {
-            CustomCanvasView.TextItem newItem = new CustomCanvasView.TextItem(
-                item.text,
-                item.x,
-                item.y,
-                item.fontName,
-                item.size,
-                item.bold,
-                item.italic,
-                item.underline,
-                item.color,
-                item.align != null ? item.align : Paint.Align.CENTER,
-                item.typeface,
-                System.currentTimeMillis() + (long)(Math.random() * 1000) // unique id
-            );
-            copiedItems.add(newItem);
-        }
-        newSheet.setTextItems(copiedItems);
-
-        // 2. Add to your canvas adapter or sheet manager
-        canvasPagerAdapter.addSheet(newSheet); // You should implement addSheet in your adapter
-
-        // 3. Switch to the new sheet
-        int newPosition = canvasPagerAdapter.getItemCount() - 1;
-        viewPager.setCurrentItem(newPosition, true);
-    }
-
-
-
-    /** ==============================
-     *  NAVIGATION BETWEEN CANVASES
-     *  ============================== */
     private void setupNavigationButtons() {
         binding.btnPrevSlide.setOnClickListener(v -> {
             int prev = viewPager.getCurrentItem() - 1;
@@ -318,9 +269,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** ==============================
-     *  FONT & FONT SIZE
-     *  ============================== */
     private void setupFontSpinner() {
         String[] fontNames = getResources().getStringArray(R.array.font_names);
 
@@ -397,9 +345,6 @@ public class MainActivity extends AppCompatActivity {
         return -1;
     }
 
-    /** ==============================
-     *  BUTTON HANDLERS
-     *  ============================== */
     private void setupButtons() {
 
         binding.managerSheet.setOnClickListener(v -> {
@@ -513,9 +458,7 @@ public class MainActivity extends AppCompatActivity {
             ContextCompat.getColor(this, android.R.color.white));
     }
 
-    /** ==============================
-     *  COLOR PICKER
-     *  ============================== */
+
     private void showColorPickerDialog(CustomCanvasView canvas) {
         View view = getLayoutInflater().inflate(R.layout.dialog_color_picker, null);
         View colorPreview = view.findViewById(R.id.colorPreview);

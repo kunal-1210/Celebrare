@@ -1,0 +1,49 @@
+<!-- res/layout/item_load_sheet.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="180dp"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="@drawable/sheet_item_bg"
+    android:gravity="center_vertical"
+    android:layout_marginBottom="8dp">
+
+    <com.example.celebrare.MiniCanvasView
+        android:id="@+id/sheetPreview"
+        android:layout_width="120dp"
+        android:layout_height="match_parent"
+        android:layout_marginEnd="8dp" />
+
+    <Space
+        android:layout_width="9dp"
+        android:background="@color/black"
+        android:layout_height="match_parent"
+        />
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/sheetName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sheet Name"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:paddingBottom="8dp" />
+
+
+        <Button
+            android:id="@+id/btnDelete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Delete"
+            android:textColor="@android:color/white"
+            android:backgroundTint="@color/purple" />
+
+    </LinearLayout>
+</LinearLayout>
